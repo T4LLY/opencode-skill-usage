@@ -76,31 +76,41 @@ function showScrollableUsage(api, title, period, message, onPeriod) {
     return
   }
 
-  api.ui.dialog.replace(() =>
-    api.ui.DialogSelect({
-      title: `${title} [${period}]`,
-      options: tableOptions(message),
-      placeholder: "Filter skills",
-      preserveSelection: true,
-      onSelect() {},
-      footerHints: [
-        {
-          title: "Period",
-          label: "P",
-          side: "right",
+  // DialogSelect's filter input owns normal text keys, so register Period at
+  // the host modal-keymap layer instead of relying on undocumented component
+  // props. The binding exists only while this usage dialog is open.
+  let disposePeriodBinding
+  const disposeBinding = () => {
+    disposePeriodBinding?.()
+    disposePeriodBinding = undefined
+  }
+
+  disposePeriodBinding = api.keymap.registerLayer({
+    mode: "modal",
+    bindings: [
+      {
+        key: "shift+p",
+        cmd: async () => {
+          // Do not leave this binding alive while DialogPrompt is on top of the
+          // modal stack, otherwise Shift+P could recursively reopen the prompt.
+          disposeBinding()
+          await onPeriod()
         },
-      ],
-      bindings: [
-        {
-          // Use a function binding instead of an action command. DialogSelect
-          // always accepts function bindings, while string action bindings are
-          // only kept when the host can resolve that action as visible.
-          key: "shift+p",
-          cmd: () => onPeriod(),
-          desc: "Change period",
-        },
-      ],
-    }),
+        desc: "Period",
+      },
+    ],
+  })
+
+  api.ui.dialog.replace(
+    () =>
+      api.ui.DialogSelect({
+        title: `${title} [${period}]`,
+        options: tableOptions(message),
+        placeholder: "Filter skills · P: Period",
+        preserveSelection: true,
+        onSelect() {},
+      }),
+    disposeBinding,
   )
   api.ui.dialog.setSize?.("xlarge")
 }

@@ -40,7 +40,7 @@ To change retention after installation, change the server plugin entry in `openc
   "plugin": [
     [
       "@t4lly/opencode-skill-usage",
-      { "retentionDays": 60 }
+      { "retentionDays": 60, "sessionCacheLimit": 256 }
     ]
   ]
 }
@@ -53,13 +53,13 @@ For a local checkout, use the same options with the local plugin spec:
   "plugin": [
     [
       "file:///E:/Git/opencode-skill-usage",
-      { "retentionDays": 60 }
+      { "retentionDays": 60, "sessionCacheLimit": 256 }
     ]
   ]
 }
 ```
 
-The plain string form uses the default 30 days. `retentionDays` must be a positive integer; invalid values fall back to 30.
+The plain string form uses the defaults: `retentionDays: 30` and `sessionCacheLimit: 256`. Both options must be positive integers; invalid values fall back to their defaults.
 
 The TUI target does not need `retentionDays`; it only reads retained logs.
 
@@ -91,7 +91,7 @@ context7-cli              2         31       1
 uiua                      0          0       0
 ```
 
-Both TUI views are scrollable. The `Filter skills` field filters rows by Skill name. Press uppercase `P` (`Shift+P`) to open a separate period prompt, then enter `1m`, `2h`, `1d`, `7d`, `30d`, or `all`. The current period is shown in the dialog title. Period changes are view-local and reset to `all` when the command is opened again.
+Both TUI views are scrollable. The filter field is labeled `Filter skills · P: Period`: lowercase text filters rows by Skill name, while uppercase `P` (`Shift+P`) opens a separate period prompt. Enter `1m`, `2h`, `1d`, `7d`, `30d`, or `all`. The current period is shown in the dialog title. Period changes are view-local and reset to `all` when the command is opened again.
 
 For scripted or non-interactive queries, use the optional CLI.
 
@@ -157,7 +157,7 @@ These choices are intentional and are worth preserving when the plugin evolves:
 - **State storage, not config/project storage.** Usage history belongs under OpenCode's state area rather than `~/.config/opencode` or `.opencode`. This avoids mixing mutable telemetry with configuration or repository files.
 - **Daily append-only JSONL.** Recording is an append; retention removes whole expired day files. This avoids rewriting a shared log while another OpenCode process may be appending to it.
 - **Telemetry is fail-open.** Logging/pruning failures are isolated from Skill execution. Statistics must never break the work being measured.
-- **Bound transient correlation state.** Agent attribution uses a small session-to-agent cache populated by `chat.params`. `session.idle`/`session.deleted` remove entries, `dispose` clears it, and a 1024-entry recent-session cap prevents unbounded growth even if lifecycle events are missed.
+- **Bound transient correlation state.** Agent attribution uses a small session-to-agent cache populated by `chat.params`. `session.idle`/`session.deleted` remove entries, `dispose` clears it, and the configurable `sessionCacheLimit` (default 256) prevents unbounded growth even if lifecycle events are missed.
 - **Keep the event schema additive.** Agent is optional and existing `ts`/`skill` records remain valid. Future fields should follow the same rule.
 
 ## Design constraints

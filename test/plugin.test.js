@@ -51,7 +51,7 @@ test.after(async () => {
 })
 
 test("manifest exposes separate server/TUI targets and bounded cache default", () => {
-  assert.equal(manifest.version, "0.7.1")
+  assert.equal(manifest.version, "0.7.2")
   assert.equal(manifest.main, "./src/server.js")
   assert.equal(manifest.exports["./server"].import, "./src/server.js")
   assert.deepEqual(manifest.exports["./server"].config, {
@@ -254,9 +254,10 @@ test("agent matrix uses Skills as rows and agents as columns", () => {
 })
 
 function createTuiHarness(promptAnswers = []) {
-  let layer
+  const layers = []
   let dialogProps
   let dialogSize
+  let dialogOnClose
   const toasts = []
 
   function DialogSelect(props) {
@@ -278,8 +279,11 @@ function createTuiHarness(promptAnswers = []) {
     },
     keymap: {
       registerLayer(value) {
-        layer = value
-        return () => {}
+        const entry = { value, disposed: false }
+        layers.push(entry)
+        return () => {
+          entry.disposed = true
+        }
       },
     },
     ui: {
@@ -289,21 +293,31 @@ function createTuiHarness(promptAnswers = []) {
         toasts.push(value)
       },
       dialog: {
-        replace(render) {
+        replace(render, onClose) {
+          dialogOnClose?.()
+          dialogOnClose = onClose
           render()
         },
         setSize(value) {
           dialogSize = value
         },
-        clear() {},
+        clear() {
+          dialogOnClose?.()
+          dialogOnClose = undefined
+        },
       },
     },
   }
 
   return {
     api,
-    get layer() {
-      return layer
+    get commandLayer() {
+      return layers.find((entry) => entry.value.commands)?.value
+    },
+    get modalLayer() {
+      return [...layers]
+        .reverse()
+        .find((entry) => entry.value.mode === "modal" && !entry.disposed)?.value
     },
     get dialogProps() {
       return dialogProps
@@ -315,7 +329,7 @@ function createTuiHarness(promptAnswers = []) {
   }
 }
 
-test("TUI views are scrollable/filterable and Shift+P changes period", async () => {
+test("TUI views are scrollable/filterable and modal P changes period", async () => {
   await rm(usageDir, { recursive: true, force: true })
   const now = Date.now()
   await writeRecords([
@@ -326,30 +340,41 @@ test("TUI views are scrollable/filterable and Shift+P changes period", async () 
 
   const harness = createTuiHarness(["2h"])
   await tuiModule.tui(harness.api)
-  assert.equal(harness.layer.commands.length, 2)
+  assert.equal(harness.commandLayer.commands.length, 2)
 
-  const usage = harness.layer.commands.find((command) => command.slashName === "skill-usage")
+  const usage = harness.commandLayer.commands.find((command) => command.slashName === "skill-usage")
   assert.ok(usage)
   await usage.run()
 
   assert.equal(harness.dialogSize, "xlarge")
   assert.equal(harness.dialogProps.title, "Skill Usage [all]")
-  assert.equal(harness.dialogProps.placeholder, "Filter skills")
-  assert.equal(harness.dialogProps.renderFilter, undefined)
-  assert.equal(harness.dialogProps.skipFilter, undefined)
-  assert.equal(harness.dialogProps.bindings[0].key, "shift+p")
-  assert.equal(typeof harness.dialogProps.bindings[0].cmd, "function")
-  assert.equal(harness.dialogProps.bindings[0].desc, "Change period")
-  assert.deepEqual(harness.dialogProps.footerHints, [
-    { title: "Period", label: "P", side: "right" },
-  ])
+  assert.equal(harness.dialogProps.placeholder, "Filter skills · P: Period")
+  assert.equal(harness.dialogProps.footerHints, undefined)
+  assert.equal(harness.dialogProps.bindings, undefined)
+  assert.equal(harness.modalLayer.mode, "modal")
+  assert.equal(harness.modalLayer.bindings[0].key, "shift+p")
+  assert.equal(harness.modalLayer.bindings[0].desc, "Period")
   assert.match(harness.dialogProps.options[0].category, /^Skill\s+Calls/)
   assert.ok(harness.dialogProps.options.some((option) => /uiua\s+0/.test(option.title)))
 
-  await harness.dialogProps.bindings[0].cmd()
+  const periodCommand = harness.modalLayer.bindings[0].cmd
+  await periodCommand()
   assert.equal(harness.dialogProps.title, "Skill Usage [2h]")
   const gitnexus = harness.dialogProps.options.find((option) => option.title.includes("gitnexus-cli"))
   assert.match(gitnexus.title, /gitnexus-cli\s+1/)
+})
+
+test("closing the usage dialog disposes its modal Period binding", async () => {
+  await rm(usageDir, { recursive: true, force: true })
+  const harness = createTuiHarness()
+  await tuiModule.tui(harness.api)
+
+  const usage = harness.commandLayer.commands.find((command) => command.slashName === "skill-usage")
+  await usage.run()
+  assert.ok(harness.modalLayer)
+
+  harness.api.ui.dialog.clear()
+  assert.equal(harness.modalLayer, undefined)
 })
 
 test("invalid TUI period warns and keeps the current view", async () => {
@@ -357,9 +382,9 @@ test("invalid TUI period warns and keeps the current view", async () => {
   const harness = createTuiHarness(["1.5h"])
   await tuiModule.tui(harness.api)
 
-  const usage = harness.layer.commands.find((command) => command.slashName === "skill-usage")
+  const usage = harness.commandLayer.commands.find((command) => command.slashName === "skill-usage")
   await usage.run()
-  await harness.dialogProps.bindings[0].cmd()
+  await harness.modalLayer.bindings[0].cmd()
 
   assert.equal(harness.dialogProps.title, "Skill Usage [all]")
   assert.equal(harness.toasts.length, 1)
@@ -377,7 +402,7 @@ test("agent TUI command renders a two-dimensional matrix", async () => {
 
   const harness = createTuiHarness()
   await tuiModule.tui(harness.api)
-  const byAgent = harness.layer.commands.find((command) => command.slashName === "skill-usage-agent")
+  const byAgent = harness.commandLayer.commands.find((command) => command.slashName === "skill-usage-agent")
   await byAgent.run()
 
   assert.equal(harness.dialogProps.title, "Skill Usage by Agent [all]")
