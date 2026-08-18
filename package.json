@@ -1,0 +1,50 @@
+{
+  "name": "@t4lly/opencode-skill-usage",
+  "version": "0.7.1",
+  "description": "Minimal OpenCode plugin for tracking skill usage.",
+  "type": "module",
+  "main": "./src/server.js",
+  "exports": {
+    "./server": {
+      "import": "./src/server.js",
+      "config": {
+        "retentionDays": 30,
+        "sessionCacheLimit": 256
+      }
+    },
+    "./tui": {
+      "import": "./src/tui.js"
+    }
+  },
+  "bin": {
+    "opencode-skill-usage": "./src/cli.js"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node --check src/server.js && node --check src/server-core.js && node --check src/tui.js && node --check src/stats.js && node --check src/cli.js",
+    "test": "node --test"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "skills",
+    "usage",
+    "analytics"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20",
+    "opencode": ">=1.18.17 <2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/T4LLY/opencode-skill-usage.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

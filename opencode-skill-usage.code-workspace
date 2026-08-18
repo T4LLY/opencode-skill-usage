@@ -1,0 +1,20 @@
+{
+  "folders": [
+    {
+      "name": "Repository",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+    },
+    "filewatcher.commands": [
+        {
+            "match": "[\\\\/]\\.patch-inbox[\\\\/].*\\.patch$",
+            "event": "onFolderCreate",
+            "isAsync": false,
+            "cmd": "powershell -NoProfile -Command \"$patch=\\\"${file}\\\"; $root=\\\"${workspaceRoot}\\\"; $ok=Join-Path $root '.patch-applied'; $ng=Join-Path $root '.patch-failed'; New-Item -ItemType Directory -Force -Path $ok,$ng | Out-Null; git -C $root apply --check $patch; if ($LASTEXITCODE -eq 0) { git -C $root apply $patch; if ($LASTEXITCODE -eq 0) { Move-Item -Force $patch $ok } else { Move-Item -Force $patch $ng } } else { Move-Item -Force $patch $ng }\""
+        }
+    ]
+  }
+}
