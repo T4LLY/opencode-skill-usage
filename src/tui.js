@@ -48,12 +48,40 @@ function warn(api, message) {
 }
 
 async function askPeriod(api, current) {
-  if (typeof api?.ui?.DialogPrompt?.show !== "function") {
+  const DialogPrompt = api?.ui?.DialogPrompt
+  const dialog = api?.ui?.dialog
+  if (typeof DialogPrompt !== "function" || typeof dialog?.replace !== "function") {
     throw new Error("OpenCode DialogPrompt is unavailable")
   }
 
-  return api.ui.DialogPrompt.show(api.ui.dialog, `Period [${current}]`, {
-    placeholder: "1m, 2h, 1d, 7d, 30d, all",
+  // The public TUI plugin API exposes DialogPrompt as a component plus the
+  // dialog stack. OpenCode's internal DialogPrompt.show() helper is not part
+  // of the public TuiPluginApi, so build the tiny Promise wrapper ourselves.
+  return new Promise((resolve) => {
+    let settled = false
+
+    const finish = (value) => {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
+
+    dialog.replace(
+      () =>
+        DialogPrompt({
+          title: `Period [${current}]`,
+          placeholder: "1m, 2h, 1d, 7d, 30d, all",
+          onConfirm(value) {
+            finish(value)
+            dialog.clear()
+          },
+          onCancel() {
+            finish(null)
+            dialog.clear()
+          },
+        }),
+      () => finish(null),
+    )
   })
 }
 

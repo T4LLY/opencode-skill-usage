@@ -51,7 +51,7 @@ test.after(async () => {
 })
 
 test("manifest exposes separate server/TUI targets and bounded cache default", () => {
-  assert.equal(manifest.version, "0.7.2")
+  assert.equal(manifest.version, "0.7.3")
   assert.equal(manifest.main, "./src/server.js")
   assert.equal(manifest.exports["./server"].import, "./src/server.js")
   assert.deepEqual(manifest.exports["./server"].config, {
@@ -256,6 +256,7 @@ test("agent matrix uses Skills as rows and agents as columns", () => {
 function createTuiHarness(promptAnswers = []) {
   const layers = []
   let dialogProps
+  let promptProps
   let dialogSize
   let dialogOnClose
   const toasts = []
@@ -265,8 +266,12 @@ function createTuiHarness(promptAnswers = []) {
     return props
   }
 
-  function DialogPrompt() {}
-  DialogPrompt.show = async () => (promptAnswers.length ? promptAnswers.shift() : null)
+  // Match the public TUI plugin API: DialogPrompt is a component. The API does
+  // not promise the host-internal DialogPrompt.show() static helper.
+  function DialogPrompt(props) {
+    promptProps = props
+    return props
+  }
 
   const api = {
     state: { path: { state: statePath } },
@@ -322,6 +327,9 @@ function createTuiHarness(promptAnswers = []) {
     get dialogProps() {
       return dialogProps
     },
+    get promptProps() {
+      return promptProps
+    },
     get dialogSize() {
       return dialogSize
     },
@@ -338,7 +346,7 @@ test("TUI views are scrollable/filterable and modal P changes period", async () 
     { ts: new Date(now - HOUR_MS).toISOString(), skill: "old-skill", agent: "oracle" },
   ])
 
-  const harness = createTuiHarness(["2h"])
+  const harness = createTuiHarness()
   await tuiModule.tui(harness.api)
   assert.equal(harness.commandLayer.commands.length, 2)
 
@@ -358,10 +366,32 @@ test("TUI views are scrollable/filterable and modal P changes period", async () 
   assert.ok(harness.dialogProps.options.some((option) => /uiua\s+0/.test(option.title)))
 
   const periodCommand = harness.modalLayer.bindings[0].cmd
-  await periodCommand()
+  const periodRun = periodCommand()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(harness.promptProps.title, "Period [all]")
+  assert.equal(harness.promptProps.placeholder, "1m, 2h, 1d, 7d, 30d, all")
+  harness.promptProps.onConfirm("2h")
+  await periodRun
   assert.equal(harness.dialogProps.title, "Skill Usage [2h]")
   const gitnexus = harness.dialogProps.options.find((option) => option.title.includes("gitnexus-cli"))
   assert.match(gitnexus.title, /gitnexus-cli\s+1/)
+})
+
+test("period prompt uses only the public DialogPrompt component API", async () => {
+  await rm(usageDir, { recursive: true, force: true })
+  const harness = createTuiHarness()
+  assert.equal(harness.api.ui.DialogPrompt.show, undefined)
+
+  await tuiModule.tui(harness.api)
+  const usage = harness.commandLayer.commands.find((command) => command.slashName === "skill-usage")
+  await usage.run()
+
+  const periodRun = harness.modalLayer.bindings[0].cmd()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(harness.promptProps.title, "Period [all]")
+  harness.promptProps.onCancel()
+  await periodRun
+  assert.equal(harness.dialogProps.title, "Skill Usage [all]")
 })
 
 test("closing the usage dialog disposes its modal Period binding", async () => {
@@ -379,12 +409,15 @@ test("closing the usage dialog disposes its modal Period binding", async () => {
 
 test("invalid TUI period warns and keeps the current view", async () => {
   await rm(usageDir, { recursive: true, force: true })
-  const harness = createTuiHarness(["1.5h"])
+  const harness = createTuiHarness()
   await tuiModule.tui(harness.api)
 
   const usage = harness.commandLayer.commands.find((command) => command.slashName === "skill-usage")
   await usage.run()
-  await harness.modalLayer.bindings[0].cmd()
+  const periodRun = harness.modalLayer.bindings[0].cmd()
+  await new Promise((resolve) => setImmediate(resolve))
+  harness.promptProps.onConfirm("1.5h")
+  await periodRun
 
   assert.equal(harness.dialogProps.title, "Skill Usage [all]")
   assert.equal(harness.toasts.length, 1)
