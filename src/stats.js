@@ -7,6 +7,8 @@ export const HOUR_MS = 3_600_000
 export const DAY_MS = 86_400_000
 export const DEFAULT_PERIOD_DAYS = 30
 
+const PERIOD_UNIT_MS = { m: MINUTE_MS, h: HOUR_MS, d: DAY_MS }
+
 /**
  * Usage history is state, not configuration and not a project artifact. Keep it
  * out of ~/.config/opencode and .opencode so it is neither hand-edited config
@@ -33,11 +35,13 @@ export function normalizePeriod(period = String(DEFAULT_PERIOD_DAYS)) {
   if (!match) throw new Error(`Invalid period: ${period}`)
 
   const amount = Number(match[1])
-  if (!Number.isSafeInteger(amount) || amount < 1) {
+  const unit = match[2] || "d"
+  const duration = amount * PERIOD_UNIT_MS[unit]
+  if (!Number.isSafeInteger(amount) || amount < 1 || !Number.isSafeInteger(duration)) {
     throw new Error(`Invalid period: ${period}`)
   }
 
-  return `${amount}${match[2] || "d"}`
+  return `${amount}${unit}`
 }
 
 export function parsePeriod(period = String(DEFAULT_PERIOD_DAYS), now = Date.now()) {
@@ -46,7 +50,7 @@ export function parsePeriod(period = String(DEFAULT_PERIOD_DAYS), now = Date.now
 
   const match = /^(\d+)([mhd])$/.exec(normalized)
   const amount = Number(match[1])
-  const unitMs = { m: MINUTE_MS, h: HOUR_MS, d: DAY_MS }[match[2]]
+  const unitMs = PERIOD_UNIT_MS[match[2]]
   const duration = amount * unitMs
 
   if (!Number.isSafeInteger(duration)) {

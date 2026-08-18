@@ -80,6 +80,17 @@ export function createServer(options, statePath = defaultOpenCodeStatePath()) {
     }
   }
 
+  function getSessionAgent(sessionID) {
+    const agent = sessionAgents.get(sessionID)
+    if (agent === undefined) return undefined
+
+    // Skill use is activity too. Refresh insertion order so a long-lived
+    // active session is not evicted only because chat.params has been quiet.
+    sessionAgents.delete(sessionID)
+    sessionAgents.set(sessionID, agent)
+    return agent
+  }
+
   function rememberSessionAgent(sessionID, agent) {
     if (typeof sessionID !== "string" || sessionID.length === 0) return
     if (typeof agent !== "string" || agent.length === 0) return
@@ -132,7 +143,7 @@ export function createServer(options, statePath = defaultOpenCodeStatePath()) {
       try {
         const now = new Date()
         const record = { ts: now.toISOString(), skill }
-        const agent = sessionAgents.get(input.sessionID)
+        const agent = getSessionAgent(input.sessionID)
         if (agent) record.agent = agent
 
         await mkdir(dir, { recursive: true })

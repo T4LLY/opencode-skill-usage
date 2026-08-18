@@ -89,6 +89,10 @@ test("period parser supports minutes, hours, days, all, and legacy bare days", (
   assert.throws(() => normalizePeriod("0h"), /Invalid period/)
   assert.throws(() => normalizePeriod("1.5h"), /Invalid period/)
   assert.throws(() => normalizePeriod("week"), /Invalid period/)
+
+  const overflowingDays = Math.floor(Number.MAX_SAFE_INTEGER / DAY_MS) + 1
+  assert.throws(() => normalizePeriod(`${overflowingDays}d`), /Invalid period/)
+  assert.throws(() => parsePeriod(`${overflowingDays}d`, now), /Invalid period/)
 })
 
 test("server initialization performs no SDK access", async () => {
@@ -171,6 +175,31 @@ test("configurable cache limit bounds memory if lifecycle events are missed", as
     [
       { skill: "oldest", agent: undefined },
       { skill: "middle", agent: "a1" },
+      { skill: "newest", agent: "a2" },
+    ],
+  )
+})
+
+test("skill use refreshes session-agent cache recency", async () => {
+  await rm(usageDir, { recursive: true, force: true })
+  const hooks = createServer({ retentionDays: 30, sessionCacheLimit: 2 }, statePath)
+
+  await hooks["chat.params"]({ sessionID: "s0", agent: "a0" })
+  await hooks["chat.params"]({ sessionID: "s1", agent: "a1" })
+  await hooks["tool.execute.after"]({ tool: "skill", sessionID: "s0", args: { name: "refresh" } })
+  await hooks["chat.params"]({ sessionID: "s2", agent: "a2" })
+
+  await hooks["tool.execute.after"]({ tool: "skill", sessionID: "s0", args: { name: "kept" } })
+  await hooks["tool.execute.after"]({ tool: "skill", sessionID: "s1", args: { name: "evicted" } })
+  await hooks["tool.execute.after"]({ tool: "skill", sessionID: "s2", args: { name: "newest" } })
+
+  const records = await getRecords("all", Date.now(), usageDir)
+  assert.deepEqual(
+    records.map(({ skill, agent }) => ({ skill, agent })),
+    [
+      { skill: "refresh", agent: "a0" },
+      { skill: "kept", agent: "a0" },
+      { skill: "evicted", agent: undefined },
       { skill: "newest", agent: "a2" },
     ],
   )
