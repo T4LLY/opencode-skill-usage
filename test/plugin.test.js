@@ -1,7 +1,10 @@
 import assert from "node:assert/strict"
+import { execFile } from "node:child_process"
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { promisify } from "node:util"
 import test from "node:test"
 
 import serverModule from "../src/server.js"
@@ -28,6 +31,17 @@ import manifest from "../package.json" with { type: "json" }
 const root = await mkdtemp(join(tmpdir(), "opencode-skill-usage-"))
 const statePath = join(root, "opencode-state")
 const usageDir = join(statePath, "skill-usage")
+
+const execFileAsync = promisify(execFile)
+const cliPath = fileURLToPath(new URL("../src/cli.js", import.meta.url))
+
+async function runCli(args, xdgStateHome) {
+  const { stdout, stderr } = await execFileAsync(process.execPath, [cliPath, ...args], {
+    env: { ...process.env, XDG_STATE_HOME: xdgStateHome },
+  })
+  assert.equal(stderr, "")
+  return stdout.trimEnd()
+}
 
 async function writeRecords(records) {
   await mkdir(usageDir, { recursive: true })
@@ -471,6 +485,57 @@ test("agent TUI command renders a two-dimensional matrix", async () => {
   assert.match(harness.dialogProps.options[0].category, /^Skill\s+oracle\s+orchestrator|^Skill\s+orchestrator\s+oracle/)
   assert.ok(harness.dialogProps.options.some((option) => /gitnexus-cli\s+1\s+1/.test(option.title)))
   assert.ok(harness.dialogProps.options.some((option) => /uiua\s+0\s+0/.test(option.title)))
+})
+
+test("CLI keeps existing JSON output and adds agent JSON only with --agent", async () => {
+  const cliStateRoot = join(root, "cli-json-state")
+  const cliUsageDir = join(cliStateRoot, "opencode", "skill-usage")
+  await mkdir(cliUsageDir, { recursive: true })
+  const now = new Date()
+  const day = now.toISOString().slice(0, 10)
+  await writeFile(
+    join(cliUsageDir, `${day}.jsonl`),
+    [
+      { ts: now.toISOString(), skill: "gitnexus-cli", agent: "orchestrator" },
+      { ts: now.toISOString(), skill: "gitnexus-cli", agent: "orchestrator" },
+      { ts: now.toISOString(), skill: "gitnexus-cli" },
+      { ts: now.toISOString(), skill: "context7-cli", agent: "librarian" },
+    ]
+      .map((record) => JSON.stringify(record))
+      .join("\n") + "\n",
+  )
+
+  assert.deepEqual(JSON.parse(await runCli(["all", "--json"], cliStateRoot)), {
+    "gitnexus-cli": 3,
+    "context7-cli": 1,
+  })
+  assert.deepEqual(JSON.parse(await runCli(["--agent", "all", "--json"], cliStateRoot)), {
+    "gitnexus-cli": { orchestrator: 2, unknown: 1 },
+    "context7-cli": { librarian: 1 },
+  })
+})
+
+test("CLI --agent renders only logged Skills as an agent matrix", async () => {
+  const cliStateRoot = join(root, "cli-table-state")
+  const cliUsageDir = join(cliStateRoot, "opencode", "skill-usage")
+  await mkdir(cliUsageDir, { recursive: true })
+  const now = new Date()
+  const day = now.toISOString().slice(0, 10)
+  await writeFile(
+    join(cliUsageDir, `${day}.jsonl`),
+    [
+      { ts: now.toISOString(), skill: "gitnexus-cli", agent: "orchestrator" },
+      { ts: now.toISOString(), skill: "context7-cli", agent: "librarian" },
+    ]
+      .map((record) => JSON.stringify(record))
+      .join("\n") + "\n",
+  )
+
+  const output = await runCli(["--agent", "all"], cliStateRoot)
+  assert.match(output, /^Skill\s+librarian\s+orchestrator/m)
+  assert.match(output, /context7-cli\s+1\s+0/)
+  assert.match(output, /gitnexus-cli\s+0\s+1/)
+  assert.doesNotMatch(output, /uiua/)
 })
 
 test("TUI activation errors are not hidden", async () => {

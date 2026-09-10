@@ -84,9 +84,11 @@ opencode-skill-usage 7d
 opencode-skill-usage 30d
 opencode-skill-usage all
 opencode-skill-usage 30d --json
+opencode-skill-usage 30d --agent
+opencode-skill-usage 30d --agent --json
 ```
 
-The CLI defaults to 30 days. Use `--json` for JSON output.
+The CLI defaults to 30 days. Use `--json` for JSON output. Add `--agent` to group each logged Skill by agent. The CLI continues to show only Skills present in the usage log.
 
 ## License
 
