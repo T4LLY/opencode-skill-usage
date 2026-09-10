@@ -65,7 +65,7 @@ test.after(async () => {
 })
 
 test("manifest exposes separate server/TUI targets and bounded cache default", () => {
-  assert.equal(manifest.version, "0.7.4")
+  assert.equal(manifest.version, "0.8.0")
   assert.equal(manifest.main, "./src/server.js")
   assert.equal(manifest.exports["./server"].import, "./src/server.js")
   assert.deepEqual(manifest.exports["./server"].config, {
